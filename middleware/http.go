@@ -32,6 +32,17 @@ func Auth(jm *jwt.Manager, next http.Handler) http.Handler {
 	})
 }
 
+func AdminOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := GetClaims(r.Context())
+		if !ok || claims.Role != "admin" {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func GetClaims(ctx context.Context) (*jwt.Claims, bool) {
 	claims, ok := ctx.Value(claimsKey).(*jwt.Claims)
 	return claims, ok

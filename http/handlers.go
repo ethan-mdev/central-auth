@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ethan-mdev/central-auth/jwt"
@@ -118,9 +120,29 @@ func (h *AuthHandler) Login() http.HandlerFunc {
 		}
 
 		// Find user
-		user, err := h.Users.GetUserByUsername(req.Username)
-		if err != nil || user == nil {
-			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid credentials"})
+		input := strings.TrimSpace(req.Username)
+
+		var user *storage.User
+		var err error
+
+		// Try username first
+		user, err = h.Users.GetUserByUsername(input)
+		if err != nil && !errors.Is(err, storage.ErrUserNotFound) {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+
+		// Not found? Try email
+		if user == nil {
+			user, err = h.Users.GetUserByEmail(input)
+			if err != nil && !errors.Is(err, storage.ErrUserNotFound) {
+				http.Error(w, "Internal error", http.StatusInternalServerError)
+				return
+			}
+		}
+
+		if user == nil {
+			http.Error(w, "Invalid username or password", http.StatusUnauthorized)
 			return
 		}
 

@@ -22,6 +22,6 @@ type UserRepository interface {
 	GetUserByEmail(email string) (*User, error)
 	// GetUserByID retrieves a user by their ID.
 	GetUserByID(id string) (*User, error)
-	// UpdateUser updates an existing user's information.
-	UpdateUser(user *User) error
+	// UpdateUserProfile updates an existing user's information.
+	UpdateUserProfile(user *User) error
 }

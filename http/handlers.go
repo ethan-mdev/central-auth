@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -243,7 +244,7 @@ func (h *AuthHandler) ChangePassword() http.HandlerFunc {
 
 		// Update user
 		user.Password = hashedPassword
-		if err := h.Users.UpdateUser(user); err != nil {
+		if err := h.Users.UpdateUserProfile(user); err != nil {
 			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to update password"})
 			return
 		}
@@ -259,7 +260,10 @@ func (h *AuthHandler) generateTokens(user *storage.User) (*AuthResponse, error) 
 		return nil, err
 	}
 
-	refreshToken := generateRefreshToken()
+	refreshToken, err := generateRefreshToken()
+	if err != nil {
+		return nil, err
+	}
 	rt := tokens.RefreshToken{
 		Token:     refreshToken,
 		UserID:    user.ID,
@@ -283,11 +287,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-func generateRefreshToken() string {
+func generateRefreshToken() (string, error) {
 	// Generate a secure random token
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		panic(err)
+		return "", fmt.Errorf("could not generate token: %w", err)
 	}
-	return base64.URLEncoding.EncodeToString(b)
+	return base64.URLEncoding.EncodeToString(b), nil
 }

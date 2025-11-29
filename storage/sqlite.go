@@ -60,9 +60,9 @@ func (r *SQLiteUserRepository) GetUserByID(id string) (*User, error) {
 	return r.scanUser(r.db.QueryRow(query, id))
 }
 
-func (r *SQLiteUserRepository) UpdateUser(user *User) error {
-	query := `UPDATE users SET username = ?, email = ?, password = ?, role = ? WHERE id = ?`
-	result, err := r.db.Exec(query, user.Username, user.Email, user.Password, user.Role, user.ID)
+func (r *SQLiteUserRepository) UpdateUserProfile(user *User) error {
+	query := `UPDATE users SET username = ?, email = ?, password = ? WHERE id = ?`
+	result, err := r.db.Exec(query, user.Username, user.Email, user.Password, user.ID)
 	if err != nil {
 		return err
 	}

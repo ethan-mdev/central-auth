@@ -60,9 +60,10 @@ func (r *PostgresUserRepository) GetUserByID(id string) (*User, error) {
 	return r.scanUser(r.db.QueryRow(query, id))
 }
 
-func (r *PostgresUserRepository) UpdateUser(user *User) error {
-	query := `UPDATE users SET username = $1, email = $2, password = $3, role = $4 WHERE id = $5`
-	result, err := r.db.Exec(query, user.Username, user.Email, user.Password, user.Role, user.ID)
+func (r *PostgresUserRepository) UpdateUserProfile(user *User) error {
+	query := `UPDATE users SET username=$1, email=$2, password=$3 
+        WHERE id=$4`
+	result, err := r.db.Exec(query, user.Username, user.Email, user.Password, user.ID)
 	if err != nil {
 		return err
 	}

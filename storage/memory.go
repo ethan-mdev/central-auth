@@ -80,7 +80,7 @@ func (r *MemoryUserRepository) GetUserByID(id string) (*User, error) {
 	return user, nil
 }
 
-func (r *MemoryUserRepository) UpdateUser(user *User) error {
+func (r *MemoryUserRepository) UpdateUserProfile(user *User) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

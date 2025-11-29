@@ -10,6 +10,7 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
+// Hasher provides password hashing and verification using Argon2id.
 type Hasher struct {
 	Memory      uint32
 	Iterations  uint32
@@ -18,6 +19,7 @@ type Hasher struct {
 	Parallelism uint8
 }
 
+// Default returns a Hasher with recommended default parameters.
 func Default() *Hasher {
 	return &Hasher{
 		Memory:      64 * 1024,
@@ -28,6 +30,7 @@ func Default() *Hasher {
 	}
 }
 
+// Hash generates a hashed password from the given plain text password.
 func (h *Hasher) Hash(password string) (string, error) {
 	salt := make([]byte, h.SaltLength)
 	if _, err := rand.Read(salt); err != nil {
@@ -40,6 +43,7 @@ func (h *Hasher) Hash(password string) (string, error) {
 	return encodedHash, nil
 }
 
+// Verify checks if the provided password matches the encoded hash.
 func (h *Hasher) Verify(password, encodedHash string) bool {
 	salt, hash, err := decodeHash(encodedHash)
 	if err != nil {
@@ -50,6 +54,7 @@ func (h *Hasher) Verify(password, encodedHash string) bool {
 	return compareHashes(hash, computedHash)
 }
 
+// Helper functions for encoding and decoding the hash
 func encodeHash(salt, hash []byte, h *Hasher) string {
 	return fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s",
 		h.Memory,

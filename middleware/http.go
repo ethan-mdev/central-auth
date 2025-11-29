@@ -32,17 +32,30 @@ func Auth(jm *jwt.Manager, next http.Handler) http.Handler {
 	})
 }
 
-func AdminOnly(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		claims, ok := GetClaims(r.Context())
-		if !ok || claims.Role != "admin" {
+// RequireRole returns middleware that only allows users with one of the specified roles.
+func RequireRole(roles ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, ok := GetClaims(r.Context())
+			if !ok {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			for _, role := range roles {
+				if claims.Role == role {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
 			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+		})
+	}
 }
 
+// GetClaims retrieves the JWT claims from the context.
+// Returns nil and false if claims are not present or invalid.
 func GetClaims(ctx context.Context) (*jwt.Claims, bool) {
 	claims, ok := ctx.Value(claimsKey).(*jwt.Claims)
 	return claims, ok

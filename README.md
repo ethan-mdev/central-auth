@@ -130,6 +130,8 @@ refreshTokens.CreateTable()
 
 ### SQLite
 
+**With CGO (requires C compiler):**
+
 ```go
 import "database/sql"
 import _ "github.com/mattn/go-sqlite3"
@@ -142,6 +144,23 @@ users.CreateTable()
 refreshTokens := tokens.NewSQLiteRefreshRepository(db)
 refreshTokens.CreateTable()
 ```
+
+**Pure Go (no CGO required):**
+
+```go
+import "database/sql"
+import _ "modernc.org/sqlite"
+
+db, _ := sql.Open("sqlite", "./auth.db")  // Note: "sqlite" not "sqlite3"
+
+users := storage.NewSQLiteUserRepository(db)
+users.CreateTable()
+
+refreshTokens := tokens.NewSQLiteRefreshRepository(db)
+refreshTokens.CreateTable()
+```
+
+> **Note:** `modernc.org/sqlite` is recommended for Windows users or when cross-compiling, as `go-sqlite3` requires CGO and a C compiler.
 
 ## API Endpoints
 

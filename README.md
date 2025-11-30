@@ -74,24 +74,6 @@ func profileHandler(w http.ResponseWriter, r *http.Request) {
 
 The `claims.Role` field lets you implement role-based route protection. Here are some common patterns:
 
-### Admin-Only Routes
-
-```go
-func AdminOnly(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        claims, ok := middleware.GetClaims(r.Context())
-        if !ok || claims.Role != "admin" {
-            http.Error(w, "Forbidden", http.StatusForbidden)
-            return
-        }
-        next.ServeHTTP(w, r)
-    })
-}
-
-// Usage: stack middleware (Auth first, then AdminOnly)
-mux.Handle("DELETE /users/{id}", middleware.Auth(jwtManager, AdminOnly(http.HandlerFunc(deleteUserHandler))))
-```
-
 ### Flexible Role Middleware
 
 ```go

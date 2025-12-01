@@ -253,6 +253,19 @@ func (h *AuthHandler) ChangePassword() http.HandlerFunc {
 	}
 }
 
+func (h *AuthHandler) Logout() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req RefreshRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+			return
+		}
+
+		h.RefreshTokens.Delete(req.RefreshToken)
+		writeJSON(w, http.StatusOK, map[string]string{"message": "logged out"})
+	}
+}
+
 // generateTokens creates both access and refresh tokens for a user
 func (h *AuthHandler) generateTokens(user *storage.User) (*AuthResponse, error) {
 	accessToken, err := h.JWT.Generate(user.ID, user.Role, h.AccessExpiry)

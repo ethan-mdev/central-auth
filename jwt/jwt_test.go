@@ -48,7 +48,7 @@ func TestRS256ValidateOnly(t *testing.T) {
 		PrivateKey: privateKey,
 		PublicKey:  &privateKey.PublicKey,
 	})
-	tokenString, _ := fullManager.Generate("12345", "admin", time.Minute*5)
+	tokenString, _ := fullManager.Generate("12345", "username", "admin", time.Minute*5)
 
 	validateOnly, _ := NewManager(Config{
 		Algorithm: "RS256",
@@ -63,7 +63,7 @@ func TestRS256ValidateOnly(t *testing.T) {
 		t.Errorf("Expected userID 12345, got %s", claims.UserID)
 	}
 
-	_, err = validateOnly.Generate("12345", "admin", time.Minute*5)
+	_, err = validateOnly.Generate("12345", "username", "admin", time.Minute*5)
 	if err == nil {
 		t.Error("Expected error when generating without private key")
 	}
@@ -111,7 +111,7 @@ func TestHS256RejectsRS256Token(t *testing.T) {
 		PrivateKey: privateKey,
 		PublicKey:  &privateKey.PublicKey,
 	})
-	token, _ := rsaManager.Generate("12345", "admin", time.Minute*5)
+	token, _ := rsaManager.Generate("12345", "username", "admin", time.Minute*5)
 
 	hmacManager, _ := NewManager(Config{
 		Algorithm: "HS256",
@@ -128,7 +128,7 @@ func TestRS256RejectsHS256Token(t *testing.T) {
 		Algorithm: "HS256",
 		Secret:    []byte("secret"),
 	})
-	token, _ := hmacManager.Generate("12345", "admin", time.Minute*5)
+	token, _ := hmacManager.Generate("12345", "username", "admin", time.Minute*5)
 
 	privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	rsaManager, _ := NewManager(Config{
@@ -166,7 +166,7 @@ func testManager(t *testing.T, manager *Manager) {
 	role := "admin"
 	duration := time.Minute * 5
 
-	tokenString, err := manager.Generate(userID, role, duration)
+	tokenString, err := manager.Generate(userID, "username", role, duration)
 	if err != nil {
 		t.Fatalf("Failed to generate token: %v", err)
 	}

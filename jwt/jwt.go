@@ -55,10 +55,11 @@ func NewManager(cfg Config) (*Manager, error) {
 }
 
 // Generate creates a new signed JWT token.
-func (m *Manager) Generate(userID string, role string, duration time.Duration) (string, error) {
+func (m *Manager) Generate(userID string, username string, role string, duration time.Duration) (string, error) {
 	claims := &Claims{
-		UserID: userID,
-		Role:   role,
+		UserID:   userID,
+		Username: username,
+		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

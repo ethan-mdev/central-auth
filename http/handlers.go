@@ -268,7 +268,7 @@ func (h *AuthHandler) Logout() http.HandlerFunc {
 
 // generateTokens creates both access and refresh tokens for a user
 func (h *AuthHandler) generateTokens(user *storage.User) (*AuthResponse, error) {
-	accessToken, err := h.JWT.Generate(user.ID, user.Role, h.AccessExpiry)
+	accessToken, err := h.JWT.Generate(user.ID, user.Username, user.Role, h.AccessExpiry)
 	if err != nil {
 		return nil, err
 	}

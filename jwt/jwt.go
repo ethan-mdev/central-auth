@@ -5,7 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 // Config holds the configuration for creating a JWT Manager.
@@ -37,7 +39,6 @@ func NewManager(cfg Config) (*Manager, error) {
 		if cfg.PrivateKey == nil && cfg.PublicKey == nil {
 			return nil, errors.New("at least one of PrivateKey or PublicKey is required for RS256")
 		}
-		// Derive public key from private key if not provided
 		if cfg.PublicKey == nil && cfg.PrivateKey != nil {
 			cfg.PublicKey = &cfg.PrivateKey.PublicKey
 		}
@@ -56,63 +57,77 @@ func NewManager(cfg Config) (*Manager, error) {
 
 // Generate creates a new signed JWT token.
 func (m *Manager) Generate(userID string, username string, role string, duration time.Duration) (string, error) {
-	claims := &Claims{
-		UserID:   userID,
-		Username: username,
-		Role:     role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
+	now := time.Now()
+
+	token, err := jwt.NewBuilder().
+		Subject(userID).
+		Claim("username", username).
+		Claim("role", role).
+		IssuedAt(now).
+		Expiration(now.Add(duration)).
+		Build()
+	if err != nil {
+		return "", err
 	}
 
-	var token *jwt.Token
+	var signedToken []byte
 	switch m.algorithm {
 	case "HS256":
-		token = jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		return token.SignedString(m.secret)
+		signedToken, err = jwt.Sign(token, jwt.WithKey(jwa.HS256(), m.secret))
 	case "RS256":
 		if m.privateKey == nil {
 			return "", errors.New("private key is required for token generation")
 		}
-		token = jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 		if m.keyID != "" {
-			token.Header["kid"] = m.keyID
+			hdrs := jws.NewHeaders()
+			hdrs.Set("kid", m.keyID)
+			signedToken, err = jwt.Sign(token, jwt.WithKey(jwa.RS256(), m.privateKey, jws.WithProtectedHeaders(hdrs)))
+		} else {
+			signedToken, err = jwt.Sign(token, jwt.WithKey(jwa.RS256(), m.privateKey))
 		}
-		return token.SignedString(m.privateKey)
+	default:
+		return "", errors.New("unsupported algorithm")
 	}
 
-	return "", errors.New("unsupported algorithm")
+	if err != nil {
+		return "", err
+	}
+	return string(signedToken), nil
 }
 
 // Validate parses and validates a JWT token, returning the claims.
 func (m *Manager) Validate(tokenString string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		switch m.algorithm {
-		case "HS256":
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, errors.New("unexpected signing method")
-			}
-			return m.secret, nil
-		case "RS256":
-			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-				return nil, errors.New("unexpected signing method")
-			}
-			if m.publicKey == nil {
-				return nil, errors.New("public key is required for token validation")
-			}
-			return m.publicKey, nil
+	var token jwt.Token
+	var err error
+
+	switch m.algorithm {
+	case "HS256":
+		token, err = jwt.Parse([]byte(tokenString), jwt.WithKey(jwa.HS256(), m.secret))
+	case "RS256":
+		if m.publicKey == nil {
+			return nil, errors.New("public key is required for token validation")
 		}
+		token, err = jwt.Parse([]byte(tokenString), jwt.WithKey(jwa.RS256(), m.publicKey))
+	default:
 		return nil, errors.New("unsupported algorithm")
-	})
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
-		return nil, jwt.ErrTokenInvalidClaims
-	}
+	sub, _ := token.Subject()
+	return &Claims{
+		UserID:   sub,
+		Username: getStringClaim(token, "username"),
+		Role:     getStringClaim(token, "role"),
+	}, nil
+}
 
-	return claims, nil
+func getStringClaim(token jwt.Token, key string) string {
+	var val string
+	if err := token.Get(key, &val); err != nil {
+		return ""
+	}
+	return val
 }

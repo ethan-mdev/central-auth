@@ -1,14 +1,16 @@
 # central-auth
 
-A reusable authentication library for Go applications. Provides JWT-based authentication, secure password hashing, and flexible storage backends.
+A lightweight, reusable authentication library for Go applications. Provides JWT-based authentication with RS256/HS256 support, secure password hashing via Argon2id, and flexible storage backends.
 
 ## Features
 
-- **JWT Management** - Generate and validate access/refresh tokens
-- **Password Hashing** - Secure Argon2id hashing with configurable parameters
-- **HTTP Middleware** - Drop-in authentication middleware for protected routes
-- **Multiple Storage Backends** - In-memory, PostgreSQL, and SQLite implementations
-- **Refresh Token Rotation** - Secure token refresh with automatic rotation
+- **JWT Authentication** - Generate and validate access/refresh tokens with RS256 or HS256
+- **Secure Password Hashing** - Argon2id with configurable parameters
+- **HTTP Handlers** - Ready-to-use registration, login, refresh, and logout endpoints
+- **Auth Middleware** - Drop-in middleware for protecting routes
+- **Multiple Storage Backends** - PostgreSQL, MySQL, and SQLite implementations
+- **Refresh Token Rotation** - Automatic token rotation for security
+- **JWKS Support** - Remote JWKS validation for microservices
 
 ## Installation
 
@@ -22,6 +24,7 @@ go get github.com/ethan-mdev/central-auth
 package main
 
 import (
+    "database/sql"
     "net/http"
     "time"
 
@@ -31,15 +34,29 @@ import (
     "github.com/ethan-mdev/central-auth/password"
     "github.com/ethan-mdev/central-auth/storage"
     "github.com/ethan-mdev/central-auth/tokens"
+    _ "github.com/lib/pq"
 )
 
 func main() {
-    // Initialize storage (use PostgreSQL/SQLite in production)
-    users := storage.NewMemoryUserRepository()
-    refreshTokens := tokens.NewMemoryRefreshRepository()
+    // Setup database
+    db, _ := sql.Open("postgres", "postgres://user:pass@localhost/dbname?sslmode=disable")
+    
+    // Initialize repositories
+    users := storage.NewPostgresUserRepository(db)
+    users.CreateTable()
+    
+    refreshTokens := tokens.NewPostgresRefreshRepository(db)
+    refreshTokens.CreateTable()
 
-    // Initialize JWT manager
-    jwtManager := jwt.NewManager([]byte("your-secret-key"))
+    // Load or generate RSA keys
+    privateKey, _ := jwt.LoadPrivateKey([]byte(privateKeyPEM))
+    
+    // Create JWT manager
+    jwtManager, _ := jwt.NewManager(jwt.Config{
+        Algorithm:  "RS256",
+        PrivateKey: privateKey,
+        KeyID:      "key-1",
+    })
 
     // Create auth handler
     authHandler := &authhttp.AuthHandler{
@@ -56,9 +73,10 @@ func main() {
     mux.HandleFunc("POST /register", authHandler.Register())
     mux.HandleFunc("POST /login", authHandler.Login())
     mux.HandleFunc("POST /refresh", authHandler.RefreshToken())
+    mux.HandleFunc("POST /logout", authHandler.Logout())
     mux.Handle("POST /change-password", middleware.Auth(jwtManager, authHandler.ChangePassword()))
 
-    // Protected route example
+    // Protected route
     mux.Handle("GET /profile", middleware.Auth(jwtManager, http.HandlerFunc(profileHandler)))
 
     http.ListenAndServe(":8080", mux)
@@ -66,158 +84,269 @@ func main() {
 
 func profileHandler(w http.ResponseWriter, r *http.Request) {
     claims, _ := middleware.GetClaims(r.Context())
-    // Use claims.UserID, claims.Role, etc.
+    // Use claims.UserID, claims.Username, claims.Role
 }
-```
-
-## Role-Based Access Control
-
-The `claims.Role` field lets you implement role-based route protection. Here are some common patterns:
-
-### Flexible Role Middleware
-
-```go
-func RequireRole(roles ...string) func(http.Handler) http.Handler {
-    return func(next http.Handler) http.Handler {
-        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            claims, ok := middleware.GetClaims(r.Context())
-            if !ok {
-                http.Error(w, "Unauthorized", http.StatusUnauthorized)
-                return
-            }
-
-            for _, role := range roles {
-                if claims.Role == role {
-                    next.ServeHTTP(w, r)
-                    return
-                }
-            }
-
-            http.Error(w, "Forbidden", http.StatusForbidden)
-        })
-    }
-}
-
-// Usage examples:
-mux.Handle("GET /admin/dashboard", middleware.Auth(jwtManager, RequireRole("admin")(dashboardHandler)))
-mux.Handle("POST /articles", middleware.Auth(jwtManager, RequireRole("admin", "editor")(createArticleHandler)))
-mux.Handle("GET /premium", middleware.Auth(jwtManager, RequireRole("admin", "premium", "subscriber")(premiumHandler)))
 ```
 
 ## Storage Backends
 
-### In-Memory (for testing/development)
-
-```go
-users := storage.NewMemoryUserRepository()
-refreshTokens := tokens.NewMemoryRefreshRepository()
-```
-
 ### PostgreSQL
 
 ```go
-import "database/sql"
 import _ "github.com/lib/pq"
 
 db, _ := sql.Open("postgres", "postgres://user:pass@localhost/dbname?sslmode=disable")
-
 users := storage.NewPostgresUserRepository(db)
 users.CreateTable()
+```
 
-refreshTokens := tokens.NewPostgresRefreshRepository(db)
-refreshTokens.CreateTable()
+### MySQL
+
+```go
+import _ "github.com/go-sql-driver/mysql"
+
+db, _ := sql.Open("mysql", "user:pass@tcp(localhost:3306)/dbname")
+users := storage.NewMySQLUserRepository(db)
+users.CreateTable()
 ```
 
 ### SQLite
 
-**With CGO (requires C compiler):**
-
 ```go
-import "database/sql"
-import _ "github.com/mattn/go-sqlite3"
-
-db, _ := sql.Open("sqlite3", "./auth.db")
-
-users := storage.NewSQLiteUserRepository(db)
-users.CreateTable()
-
-refreshTokens := tokens.NewSQLiteRefreshRepository(db)
-refreshTokens.CreateTable()
-```
-
-**Pure Go (no CGO required):**
-
-```go
-import "database/sql"
 import _ "modernc.org/sqlite"
 
-db, _ := sql.Open("sqlite", "./auth.db")  // Note: "sqlite" not "sqlite3"
-
+db, _ := sql.Open("sqlite", "./auth.db")
 users := storage.NewSQLiteUserRepository(db)
 users.CreateTable()
-
-refreshTokens := tokens.NewSQLiteRefreshRepository(db)
-refreshTokens.CreateTable()
 ```
 
-> **Note:** `modernc.org/sqlite` is recommended for Windows users or when cross-compiling, as `go-sqlite3` requires CGO and a C compiler.
+> **Note:** Use `modernc.org/sqlite` for pure Go implementation, or `github.com/mattn/go-sqlite3` if you have CGO available.
+
+## JWT Configuration
+
+### RS256 (Recommended for production)
+
+```go
+// Generate keys or load from file
+privateKey, _ := jwt.GenerateRSAKey(2048)
+
+jwtManager, _ := jwt.NewManager(jwt.Config{
+    Algorithm:  "RS256",
+    PrivateKey: privateKey,
+    KeyID:      "key-1",
+})
+
+// Export JWKS for other services
+jwks, _ := jwtManager.JWKS()
+```
+
+### HS256 (Simpler, single service)
+
+```go
+jwtManager, _ := jwt.NewManager(jwt.Config{
+    Algorithm: "HS256",
+    Secret:    []byte("your-secret-key"),
+})
+```
+
+## Middleware
+
+### Basic Auth Protection
+
+```go
+mux.Handle("GET /protected", middleware.Auth(jwtManager, protectedHandler))
+```
+
+### Role-Based Access Control
+
+```go
+// Single role
+mux.Handle("GET /admin", middleware.Auth(jwtManager, 
+    middleware.RequireRole("admin")(adminHandler)))
+
+// Multiple roles (allows any of them)
+mux.Handle("POST /articles", middleware.Auth(jwtManager, 
+    middleware.RequireRole("admin", "editor")(createArticleHandler)))
+
+// Get user info from claims
+func someHandler(w http.ResponseWriter, r *http.Request) {
+    claims, _ := middleware.GetClaims(r.Context())
+    // claims.UserID, claims.Username, claims.Role
+}
+```
+
+## Microservices with JWKS
+
+For distributed systems, use JWKS to validate tokens without sharing private keys:
+
+**Auth Service:**
+```go
+// Expose JWKS endpoint
+mux.HandleFunc("GET /.well-known/jwks.json", func(w http.ResponseWriter, r *http.Request) {
+    jwks, _ := jwtManager.JWKS()
+    w.Header().Set("Content-Type", "application/json")
+    w.Write(jwks)
+})
+```
+
+**Other Services:**
+```go
+import "github.com/ethan-mdev/central-auth/middleware"
+
+jwksAuth, _ := middleware.NewJWKSAuth(
+    context.Background(),
+    "http://auth-service:8080/.well-known/jwks.json",
+    15*time.Minute, // refresh interval
+)
+
+mux.Handle("GET /api/data", jwksAuth.Auth(dataHandler))
+```
+
+## Extending the User Schema
+
+To add custom fields (e.g., `profile_image`, `bio`), skip `CreateTable()` and manage your own schema:
+
+**Custom Migration:**
+```sql
+CREATE TABLE users (
+    id VARCHAR(36) PRIMARY KEY,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'user',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    -- Custom fields
+    profile_image TEXT DEFAULT NULL,
+    bio TEXT DEFAULT NULL
+);
+```
+
+**Extended Repository:**
+```go
+type ExtendedUserRepository struct {
+    storage.UserRepository
+    db *sql.DB
+}
+
+func NewExtendedUserRepository(repo storage.UserRepository, db *sql.DB) *ExtendedUserRepository {
+    return &ExtendedUserRepository{
+        UserRepository: repo,
+        db:             db,
+    }
+}
+
+func (r *ExtendedUserRepository) GetUserWithProfile(userID string) (map[string]interface{}, error) {
+    var id, username, email, role string
+    var profileImage sql.NullString
+    
+    err := r.db.QueryRow(`
+        SELECT id, username, email, role, profile_image 
+        FROM users WHERE id = $1
+    `, userID).Scan(&id, &username, &email, &role, &profileImage)
+    
+    if err != nil {
+        return nil, err
+    }
+    
+    return map[string]interface{}{
+        "id":            id,
+        "username":      username,
+        "email":         email,
+        "role":          role,
+        "profile_image": profileImage.String,
+    }, nil
+}
+
+func (r *ExtendedUserRepository) UpdateProfileImage(userID, image string) error {
+    _, err := r.db.Exec("UPDATE users SET profile_image = $1 WHERE id = $2", image, userID)
+    return err
+}
+```
+
+**Usage:**
+```go
+// Initialize base repository (don't call CreateTable)
+baseUsers := storage.NewPostgresUserRepository(db)
+
+// Wrap with extended functionality
+users := NewExtendedUserRepository(baseUsers, db)
+
+// Use in auth handler
+authHandler := &authhttp.AuthHandler{
+    Users: users, // ExtendedUserRepository satisfies UserRepository interface
+    // ...
+}
+```
+
+This pattern keeps central-auth's core simple while allowing full customization.
 
 ## API Endpoints
 
 | Endpoint | Method | Description | Auth Required |
 |----------|--------|-------------|---------------|
-| `/register` | POST | Create new user account | No |
-| `/login` | POST | Authenticate and get tokens | No |
-| `/refresh` | POST | Exchange refresh token for new tokens | No |
-| `/change-password` | POST | Update user password | Yes |
+| `/register` | POST | Create new user | No |
+| `/login` | POST | Authenticate user | No |
+| `/refresh` | POST | Refresh access token | No |
+| `/logout` | POST | Invalidate refresh token | No |
+| `/change-password` | POST | Change user password | Yes |
 
 ### Request/Response Examples
 
-**Register**
+**Register:**
 ```json
-// POST /register
+POST /register
 {
   "username": "john",
   "email": "john@example.com",
   "password": "securepassword"
 }
 
-// Response: 201 Created
+Response: 201 Created
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "dGhpcyBpcyBhIHJlZnJl...",
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "refresh_token": "random-base64-string",
   "expires_in": 900
 }
 ```
 
-**Login**
+**Login:**
 ```json
-// POST /login
+POST /login
 {
   "username": "john",
   "password": "securepassword"
 }
 
-// Response: 200 OK
+Response: 200 OK
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "dGhpcyBpcyBhIHJlZnJl...",
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "refresh_token": "random-base64-string",
   "expires_in": 900
 }
 ```
 
-**Refresh Token**
-```json
-// POST /refresh
-{
-  "refresh_token": "dGhpcyBpcyBhIHJlZnJl..."
-}
+## Password Hashing
 
-// Response: 200 OK
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "bmV3IHJlZnJlc2ggdG9r...",
-  "expires_in": 900
+Uses Argon2id with configurable parameters:
+
+```go
+hasher := password.Default()
+
+// Hash password
+hash, _ := hasher.Hash("mypassword")
+
+// Verify password
+valid := hasher.Verify("mypassword", hash) // true
+```
+
+Custom parameters:
+```go
+hasher := &password.Hasher{
+    Memory:      128 * 1024, // 128 MB
+    Iterations:  4,
+    SaltLength:  16,
+    KeyLength:   32,
+    Parallelism: 4,
 }
 ```
 

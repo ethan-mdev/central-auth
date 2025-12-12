@@ -1,6 +1,11 @@
 package storage
 
-import "time"
+import (
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // User represents a user in the system.
 type User struct {
@@ -24,4 +29,12 @@ type UserRepository interface {
 	GetUserByID(id string) (*User, error)
 	// UpdateUserProfile updates an existing user's information.
 	UpdateUserProfile(user *User) error
+}
+
+// ErrUserNotFound is returned when a user is not found.
+var ErrUserNotFound = errors.New("user not found")
+
+// generateID generates a new UUID for a user.
+func generateID() string {
+	return uuid.New().String()
 }

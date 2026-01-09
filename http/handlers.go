@@ -60,30 +60,30 @@ func (h *AuthHandler) Register() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req RegisterRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid request body"})
 			return
 		}
 
 		// Basic validation
 		if req.Username == "" || req.Email == "" || req.Password == "" {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "username, email, and password are required"})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Username, email, and password are required"})
 			return
 		}
 
 		// Check if user already exists
 		if existing, _ := h.Users.GetUserByUsername(req.Username); existing != nil {
-			writeJSON(w, http.StatusConflict, ErrorResponse{Error: "username already taken"})
+			writeJSON(w, http.StatusConflict, ErrorResponse{Error: "Username already taken"})
 			return
 		}
 		if existing, _ := h.Users.GetUserByEmail(req.Email); existing != nil {
-			writeJSON(w, http.StatusConflict, ErrorResponse{Error: "email already registered"})
+			writeJSON(w, http.StatusConflict, ErrorResponse{Error: "Email already registered"})
 			return
 		}
 
 		// Hash password
 		hashedPassword, err := h.Hash.Hash(req.Password)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to process password"})
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to process password"})
 			return
 		}
 
@@ -97,14 +97,14 @@ func (h *AuthHandler) Register() http.HandlerFunc {
 		}
 
 		if err := h.Users.CreateUser(user); err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to create user"})
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to create user"})
 			return
 		}
 
 		// Generate tokens
 		resp, err := h.generateTokens(user)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to generate tokens"})
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to generate tokens"})
 			return
 		}
 
@@ -116,7 +116,7 @@ func (h *AuthHandler) Login() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req LoginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid request body"})
 			return
 		}
 
@@ -149,14 +149,14 @@ func (h *AuthHandler) Login() http.HandlerFunc {
 
 		// Verify password
 		if !h.Hash.Verify(req.Password, user.Password) {
-			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid credentials"})
+			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "Invalid credentials"})
 			return
 		}
 
 		// Generate tokens
 		resp, err := h.generateTokens(user)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to generate tokens"})
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to generate tokens"})
 			return
 		}
 
@@ -168,28 +168,28 @@ func (h *AuthHandler) RefreshToken() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req RefreshRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid request body"})
 			return
 		}
 
 		// Validate refresh token
 		storedToken, err := h.RefreshTokens.Get(req.RefreshToken)
 		if err != nil || storedToken == nil {
-			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid refresh token"})
+			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "Invalid refresh token"})
 			return
 		}
 
 		// Check expiration
 		if time.Now().After(storedToken.ExpiresAt) {
 			h.RefreshTokens.Delete(req.RefreshToken)
-			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "refresh token expired"})
+			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "Refresh token expired"})
 			return
 		}
 
 		// Get user
 		user, err := h.Users.GetUserByID(storedToken.UserID)
 		if err != nil || user == nil {
-			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "user not found"})
+			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "User not found"})
 			return
 		}
 
@@ -199,7 +199,7 @@ func (h *AuthHandler) RefreshToken() http.HandlerFunc {
 		// Generate new tokens
 		resp, err := h.generateTokens(user)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to generate tokens"})
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to generate tokens"})
 			return
 		}
 
@@ -212,40 +212,40 @@ func (h *AuthHandler) ChangePassword() http.HandlerFunc {
 		// Get claims from context (requires Auth middleware)
 		claims, ok := middleware.GetClaims(r.Context())
 		if !ok {
-			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "Unauthorized"})
 			return
 		}
 
 		var req ChangePasswordRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid request body"})
 			return
 		}
 
 		// Get user
 		user, err := h.Users.GetUserByID(claims.UserID)
 		if err != nil || user == nil {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "user not found"})
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "User not found"})
 			return
 		}
 
 		// Verify old password
 		if !h.Hash.Verify(req.OldPassword, user.Password) {
-			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "incorrect password"})
+			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "Incorrect password"})
 			return
 		}
 
 		// Hash new password
 		hashedPassword, err := h.Hash.Hash(req.NewPassword)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to process password"})
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to process password"})
 			return
 		}
 
 		// Update user
 		user.Password = hashedPassword
 		if err := h.Users.UpdateUserProfile(user); err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "failed to update password"})
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to update password"})
 			return
 		}
 
@@ -257,7 +257,7 @@ func (h *AuthHandler) Logout() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req RefreshRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid request body"})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid request body"})
 			return
 		}
 
